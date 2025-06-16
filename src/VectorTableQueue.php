@@ -1,6 +1,7 @@
 <?php
 
 namespace jtgraham38\wpvectordb;
+
 //class that manages the vector table queue
 class VectorTableQueue {
     private $table_name;
