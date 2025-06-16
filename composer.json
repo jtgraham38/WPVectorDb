@@ -3,6 +3,9 @@
     "description": "Utitlities for managing a vector database in MySQL for use within WordPress plugins.",
     "type": "library",
     "license": "GPLv3",
+    "require": {
+        "php": ">=7.3"
+    },
     "autoload": {
         "psr-4": {
             "jtgraham38\\wpvectordb\\": "src/"
@@ -13,6 +16,5 @@
             "name": "Jacob Graham",
             "email": "jtgraham38@gmail.com"
         }
-    ],
-    "require": {}
+    ]
 }
