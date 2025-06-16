@@ -1,5 +1,5 @@
 {
-    "name": "jtgraham38/wp-vector-db",
+    "name": "jtgraham38/wpvectordb",
     "description": "Utitlities for managing a vector database in MySQL for use within WordPress plugins.",
     "type": "library",
     "license": "GPLv3",
