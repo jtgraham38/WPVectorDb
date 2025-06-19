@@ -4,16 +4,16 @@ namespace jtgraham38\wpvectordb;
 
 // Use statements for namespaced classes
 //custom heap class, used in candidate generation
-class HammingDistMinHeap extends SplMinHeap{
+class HammingDistMinHeap extends \SplMinHeap{
     protected function compare($a, $b): int{
         return $b['hamming_distance'] <=> $a['hamming_distance'];
     }
 }
 
 // another custom heap class, for getting most similar vectors
-class CosimMaxHeap extends SplMinHeap{
+class CosimMaxHeap extends \SplMaxHeap{
     protected function compare($a, $b): int{
-        return $a['cosine_similarity'] <=> $b['cosine_similarity'];
+        return $b['cosine_similarity'] <=> $a['cosine_similarity'];
     }
 }
 
