@@ -82,7 +82,8 @@ class VectorTable{
             return "'$post_type'";
         }, $post_types);
         $post_types = implode(',', $post_types);
-        $candidate_posts_query = "SELECT ID from $wpdb->posts WHERE post_type IN ($post_types) AND post_status = 'publish' LIMIT 1000000";
+        //some versions of mysql don't support limits in subqueries, so we do not include a limit here
+        $candidate_posts_query = "SELECT ID from $wpdb->posts WHERE post_type IN ($post_types) AND post_status = 'publish'";
 
         //get all the vectors for the candidate posts
         $candidates_query = "select id, binary_code from $this->table_name WHERE post_id IN ($candidate_posts_query) LIMIT 1000000";
