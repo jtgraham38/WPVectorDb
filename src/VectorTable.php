@@ -11,9 +11,10 @@ class HammingDistMinHeap extends \SplMinHeap{
 }
 
 // another custom heap class, for getting most similar vectors
-class CosimMaxHeap extends \SplMaxHeap{
+// I know it is called a max heap but extends \SplMinHeap, the comparison is set up so it works this way
+class CosimMaxHeap extends \SplMinHeap{
     protected function compare($a, $b): int{
-        return $b['cosine_similarity'] <=> $a['cosine_similarity'];
+        return $a['cosine_similarity'] <=> $b['cosine_similarity'];
     }
 }
 
