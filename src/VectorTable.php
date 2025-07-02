@@ -2,6 +2,9 @@
 
 namespace jtgraham38\wpvectordb;
 
+//use builder and sorts
+use jtgraham38\wpvectordb\query\QueryBuilder;
+
 // Use statements for namespaced classes
 //custom heap class, used in candidate generation
 class HammingDistMinHeap extends \SplMinHeap{
@@ -63,9 +66,11 @@ class VectorTable{
      * 
      * @param array|string $vector The query vector to search for (can be array or JSON string)
      * @param int $n Number of most similar vectors to return (default: 5)
+     * @param QueryBuilder $builder Holds filters and other operations to apply to the search
+     * @param array $sorts Sorts to apply to the search
      * @return array Array of post IDs of the most similar vectors
      */
-    public function search($vector, int $n=5): array{
+    public function search($vector, int $n=5, QueryBuilder $builder = null, array $sorts = []): array{
         global $wpdb;
 
         //convert from array to string
@@ -79,12 +84,40 @@ class VectorTable{
         //  \\  //  \\  CANDIDATE GENERATION //  \\  //  \\  //
         //ensure only published posts and the selected post types are used
         $post_types = get_option($this->plugin_prefix . 'post_types');
-        $post_types = array_map(function($post_type){
-            return "'$post_type'";
-        }, $post_types);
-        $post_types = implode(',', $post_types);
-        //some versions of mysql don't support limits in subqueries, so we do not include a limit here
-        $candidate_posts_query = "SELECT ID from $wpdb->posts WHERE post_type IN ($post_types) AND post_status = 'publish'";
+
+        //get the ids of all posts we want to consider for semantic search
+        //NOTE: some versions of mysql don't support limits in subqueries, so we do not include a limit here
+        $candidate_posts_query = "
+        SELECT p.ID FROM $wpdb->posts p 
+        LEFT JOIN $wpdb->postmeta pm 
+        ON p.ID = pm.post_id
+        WHERE 1=1
+        ";
+        
+        // $candidate_posts_query = "SELECT ID from $wpdb->posts 
+        // WHERE post_type IN ($post_types) 
+        // AND post_status = 'publish'";
+
+        //add a filter for post types and status
+        $builder->add_filter_group('_semsearch_post_types');
+        $builder->add_filter('_semsearch_post_types', [
+            'field_name' => 'post_type',
+            'operator' => 'IN',
+            'compare_value' => $post_types
+        ]);
+
+        $builder->add_filter_group('_semsearch_post_status');
+        $builder->add_filter('_semsearch_post_status', [
+            'field_name' => 'post_status',
+            'operator' => '=',
+            'compare_value' => 'publish'
+        ]);
+        
+
+        //add builder to sql statement
+        if ($builder->has_filters()){
+            $candidate_posts_query .= " AND (" . $builder->to_sql() . ")";
+        }
 
         //get all the vectors for the candidate posts
         $candidates_query = "select id, binary_code from $this->table_name WHERE post_id IN ($candidate_posts_query) LIMIT 1000000";
