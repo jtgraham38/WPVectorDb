@@ -70,8 +70,22 @@ class VectorTable{
      * @param array $sorts Sorts to apply to the search
      * @return array Array of post IDs of the most similar vectors
      */
-    public function search($vector, int $n=5, QueryBuilder $builder = null, array $sorts = []): array{
+    public function search(array | string $vector, int $n=5, QueryBuilder $builder = null): array{
         global $wpdb;
+
+        //set limits on stage 1 and 2 candidates
+        //stage 1 = number of candidates to grab via vector hash after filtering
+        //stage 2 = the best $n candidates from stage 1, after reranking with cosine similarity
+        //stage 3 = the number of candidates to send to the query sorting step
+        //n = number of candidates to return after sorting
+        $stage_1_limit = 1000000;
+        $stage_2_limit = 10 * $n;
+        $stage_3_limit = 5 * $n;
+
+        //if no builder is provided, create a new one
+        if ($builder == null){
+            $builder = new QueryBuilder();
+        }
 
         //convert from array to string
         if (is_array($vector)){
@@ -88,39 +102,19 @@ class VectorTable{
         //get the ids of all posts we want to consider for semantic search
         //NOTE: some versions of mysql don't support limits in subqueries, so we do not include a limit here
         $candidate_posts_query = "
-        SELECT p.ID FROM $wpdb->posts p 
+        SELECT DISTINCT p.ID FROM $wpdb->posts p 
         LEFT JOIN $wpdb->postmeta pm 
         ON p.ID = pm.post_id
         WHERE 1=1
         ";
-        
-        // $candidate_posts_query = "SELECT ID from $wpdb->posts 
-        // WHERE post_type IN ($post_types) 
-        // AND post_status = 'publish'";
-
-        //add a filter for post types and status
-        $builder->add_filter_group('_semsearch_post_types');
-        $builder->add_filter('_semsearch_post_types', [
-            'field_name' => 'post_type',
-            'operator' => 'IN',
-            'compare_value' => $post_types
-        ]);
-
-        $builder->add_filter_group('_semsearch_post_status');
-        $builder->add_filter('_semsearch_post_status', [
-            'field_name' => 'post_status',
-            'operator' => '=',
-            'compare_value' => 'publish'
-        ]);
-        
 
         //add builder to sql statement
         if ($builder->has_filters()){
-            $candidate_posts_query .= " AND (" . $builder->to_sql() . ")";
+            $candidate_posts_query .= " AND (" . $builder->get_filters_sql() . ")";
         }
 
         //get all the vectors for the candidate posts
-        $candidates_query = "select id, binary_code from $this->table_name WHERE post_id IN ($candidate_posts_query) LIMIT 1000000";
+        $candidates_query = "select id, binary_code from $this->table_name WHERE post_id IN ($candidate_posts_query) LIMIT $stage_1_limit";
 
         $embeddings = $wpdb->get_results($candidates_query);
 
@@ -144,24 +138,23 @@ class VectorTable{
             ]);
         }
         
-        //get the 4n closest candidates out of the heap
+        //get the $stage_2_limit closest candidates out of the heap
         $candidates = [];
-        for ($i = 0; $i < 4*$n; $i++){
+        for ($i = 0; $i < $stage_2_limit; $i++){
             if ($closest_candidates->count() < 1) break;
             $candidates[] = $closest_candidates->extract();
         }
 
         //get the ids of the candidates
         $candidate_ids = array_map(function($candidate){ return $candidate['id']; }, $candidates);
-        $candidates_str = implode(',', $candidate_ids);
+        $candidates_str = implode(',', array_map('intval', $candidate_ids));
 
         //  \\  //  \\  RERANKING //  \\  //  \\  //
         //find the candidates with the lowest cosine distance to the query vector using php
         $reranked_candidates = new CosimMaxHeap();
         
-        //get all the candidates
-        //100000 should be more than enough to cover the 4n candidates
-        $sql = "SELECT id, magnitude, vector FROM $this->table_name WHERE id IN ($candidates_str) LIMIT 100000";
+        //get all the candidates, with a limit of $stage_1_limit
+        $sql = "SELECT id, magnitude, vector FROM $this->table_name WHERE id IN ($candidates_str,-1) LIMIT $stage_1_limit";
         $candidates = $wpdb->get_results($sql);
 
         //parse the vector
@@ -187,24 +180,56 @@ class VectorTable{
 
         }
 
-        //get the n most similar candidates
+        //get the stage_3_limit most similar candidates
         $reranked_candidates_arr = [];
-        for ($i = 0; $i < $n; $i++){
+        for ($i = 0; $i < $stage_3_limit; $i++){
             if ($reranked_candidates->count() < 1) break;
             $reranked_candidates_arr[] = $reranked_candidates->extract();
         }
 
-        //get post titles with candidates
-        // foreach ($reranked_candidates_arr as &$candidate){
-        //     $candidate['post_title'] = get_the_title($candidate['id']);
-        // }
-        // echo json_encode($reranked_candidates_arr);
-        
-
-        //return the ids of the reranked candidates
+        //get the post ids that the candidates are associated with
         $reranked_ids = array_map(function($candidate){ return $candidate['id']; }, $reranked_candidates_arr);
 
-        return $reranked_ids;
+        //sort the candidates based on the query builder sorts
+        $reranked_sorted_ids = [];
+        if ($builder->has_sorts()){
+
+            //create the post meta join statements and attribute select statements
+            $post_meta_joins = [];
+            $post_meta_selects = [];
+            foreach ($builder->get_sorts() as $i => $sort){
+                if ($sort->is_meta_sort){
+                    $post_meta_joins[] = "LEFT JOIN $wpdb->postmeta pm$i ON p.ID = pm$i.post_id AND pm$i.meta_key = '" . esc_sql($sort->field_name) . "'";
+                    $post_meta_selects[] = "MAX(pm$i.meta_value) as " . esc_sql($sort->field_name);
+                }
+            }
+
+            //assemble the sql statement
+            $sql = "SELECT v.id, p.post_date, p.post_author, p.post_modified, p.comment_count,
+            " . implode(", ", $post_meta_selects) . "
+            FROM $this->table_name v
+            LEFT JOIN $wpdb->posts p 
+            ON v.post_id = p.ID " . implode(" ", $post_meta_joins) . "
+            WHERE v.id IN (" . implode(",", array_merge(array_map('intval', $reranked_ids), [-1])) . ")
+            GROUP BY v.id, p.post_date, p.post_author, p.post_modified, p.comment_count
+            ORDER BY " . $builder->get_sorts_sql() . " LIMIT $n";
+            
+            $reranked_sorted_ids = $wpdb->get_results($sql);
+        }
+
+        
+        //get the ids of the reranked candidates
+        $reranked_sorted_ids = array_map(function($id){ return $id->id; }, $reranked_sorted_ids);
+        
+
+        //return the ids of the min(count($reranked_sorted_ids), $n) reranked candidates
+        if (count($reranked_sorted_ids) > 0){
+            return array_slice($reranked_sorted_ids, 0, min(count($reranked_sorted_ids), $n));
+        }
+        else{
+            return array_slice($reranked_ids, 0, min(count($reranked_ids), $n));
+        }
+
     }
 
     /**
@@ -232,13 +257,15 @@ class VectorTable{
         global $wpdb;
 
         $ids_str = implode(',', $ids);
-
         if (empty($ids_str)){
             return [];
         }
 
         return $wpdb->get_results(
-            "SELECT * FROM $this->table_name WHERE id IN ($ids_str)"
+            $wpdb->prepare(
+                "SELECT * FROM $this->table_name WHERE id IN ($ids_str,-1) ORDER BY FIELD(id, %s)",
+                $ids_str
+            )
         );
 
     }
@@ -298,6 +325,7 @@ class VectorTable{
      * @return array Array of all vector data objects (limited to 100,000)
      */
     public function get_all(): array{
+        //todo: paginate
         global $wpdb;
 
         //TODO: I need to paginate this eventually
@@ -461,7 +489,7 @@ class VectorTable{
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         dbDelta($sql);
 
-        add_option($this->prefix . 'db_version', $this->db_version);
+        add_option($this->plugin_prefix . 'db_version', $this->db_version);
     }
 
     /**
@@ -586,7 +614,7 @@ class VectorTable{
      * @return string Plugin prefix
      */
     public function get_prefix(): string{
-        return $this->prefix;
+        return $this->plugin_prefix;
     }
 
     /**
