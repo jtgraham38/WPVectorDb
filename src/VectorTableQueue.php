@@ -103,7 +103,14 @@ class VectorTableQueue {
 
         // Check if post already exists in queue
         if ($this->post_exists($post_id)) {
-            return new WP_Error('post_exists', 'Post already exists in queue');
+            throw new \Exception('Post already exists in queue');
+
+            //check if the status is either failed or completed
+            $status = $wpdb->get_var("SELECT status FROM $this->table_name WHERE post_id = $post_id");
+            if ($status == 'failed' || $status == 'completed'){
+                //reset the post
+                $this->delete_post($post_id);
+            }
         }
 
 
@@ -120,7 +127,7 @@ class VectorTableQueue {
         );
 
         if ($result === false) {
-            return new WP_Error('db_error', $wpdb->last_error);
+            throw new \Exception('Failed to add post to queue: ' . $wpdb->last_error);
         }
 
         return true;
