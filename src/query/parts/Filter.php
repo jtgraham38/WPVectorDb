@@ -9,10 +9,70 @@ class Filter{
     public bool $is_meta_filter;
 
     public function __construct($field_name, $operator, $compare_value, $is_meta_filter=false){
-        $this->field_name = $field_name;
-        $this->compare_value = $compare_value;
-        $this->operator = $operator;
-        $this->is_meta_filter = $is_meta_filter;
+        $this->field_name = esc_sql($field_name);
+        //escape the operator
+        switch ($operator){
+            case '=':
+                $this->operator = '=';
+                break;
+            case '!=':
+                $this->operator = '!=';
+                break;
+            case '>':
+                $this->operator = '>';
+                break;
+            case '<':
+                $this->operator = '<';
+                break;
+            case '>=':
+                $this->operator = '>=';
+                break;
+            case '<=':
+                $this->operator = '<=';
+                break;
+            case 'IN':
+                $this->operator = 'IN';
+                break;
+            case 'NOT IN':
+                $this->operator = 'NOT IN';
+                break;
+            case 'LIKE':
+                $this->operator = 'LIKE';
+                break;
+            case 'NOT LIKE':
+                $this->operator = 'NOT LIKE';
+                break;
+            default:
+                throw new \Exception('Invalid filter operator: ' . $operator);
+        }
+
+        //escape the compare value
+        switch (gettype($compare_value)){
+            case 'string':
+                $this->compare_value = $compare_value;
+                break;
+            case 'integer':
+                $this->compare_value = $compare_value;
+                break;
+            case 'float':
+                $this->compare_value = $compare_value;
+                break;
+            case 'object':
+                if (get_class($compare_value) == 'DateTime'){    
+                    $this->compare_value = $compare_value;
+                }
+                else{
+                    throw new \Exception('Invalid filter compare value class: ' . get_class($compare_value));
+                }
+                break;
+            case 'array':
+                $this->compare_value = array_map('esc_sql', $compare_value);
+                break;
+            default:
+                throw new \Exception('Invalid filter compare value type: ' . gettype($compare_value));
+        }
+        $this->is_meta_filter = $is_meta_filter ? true : false;
+
     }
 
     /**
@@ -22,7 +82,7 @@ class Filter{
      * @param string $meta_value_query_field_name The field name to use for the meta value query, in case the preceding part of the query renames the meta value field
      * @return string The SQL query string
      */
-    public function to_sql($post_table_sql_id = 'p', $post_meta_table_sql_id = 'pm'){
+    public function to_sql($post_table_alias = 'p', $post_meta_table_alias = 'pm'){
 
         //if the filter is an in or not in filter, and the value is empty, return 1=1
         //because in queries with no values are not supported, and I need to maintain valid sql
@@ -34,29 +94,40 @@ class Filter{
 
         //handle a filter based on meta query attributes
         if ($this->is_meta_filter){
-            return "$post_meta_table_sql_id.meta_key = '{$this->field_name}' AND $post_meta_table_sql_id.meta_value {$this->operator} {$this->get_compare_value_for_sql()}";
+            $sql = "$post_meta_table_alias.meta_key = '{$this->field_name}' AND $post_meta_table_alias.meta_value {$this->operator} {$this->get_compare_value_for_sql()}";
+        } else{
+            $sql = "$post_table_alias.{$this->field_name} {$this->operator} {$this->get_compare_value_for_sql()}";
         }
 
         //handle a filter based on a post table attribute
-        return "$post_table_sql_id.{$this->field_name} {$this->operator} {$this->get_compare_value_for_sql()}";
+        return $sql;
     }
 
-    //get compare value for sql, based on the type of the compare value
     public function get_compare_value_for_sql(){
-        $compare_value = $this->compare_value;
-        $compare_value_type = gettype($compare_value);
-        
-        switch ($compare_value_type){
+        switch (gettype($this->compare_value)){
             case 'string':
-                return "'{$compare_value}'";
+                //add %% if the operator is like or not like
+                if ($this->operator == 'LIKE' || $this->operator == 'NOT LIKE'){
+                    return "'%" . esc_sql("{$this->compare_value}") . "%'";
+                }
+                else{
+                    return "'" . esc_sql($this->compare_value) . "'";
+                }
             case 'integer':
-                return $compare_value;
+                return $this->compare_value;
             case 'float':
-                return $compare_value;
+                return $this->compare_value;
+            case 'object':
+                if (get_class($this->compare_value) == 'DateTime'){    
+                    return "CAST('{$this->compare_value->format('Y-m-d H:i:s')}' AS DATETIME)";
+                }
+                else{
+                    throw new \Exception('Invalid filter compare value class: ' . get_class($this->compare_value));
+                }
             case 'array':
-                return "('" . implode("','", $compare_value) . "')";
+                return "('" . implode("','", array_map('esc_sql', $this->compare_value)) . "')";
             default:
-                return $compare_value;
+                throw new \Exception('Invalid filter compare value type: ' . gettype($this->compare_value));
         }
     }
 }
