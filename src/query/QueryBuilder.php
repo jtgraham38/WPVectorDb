@@ -7,15 +7,16 @@ use jtgraham38\wpvectordb\query\parts\Sort;
 class QueryBuilder{
     public array $filters;
     public array $sorts;
-    public string $post_table_sql_id;
-    public string $post_meta_table_sql_id;
-    public function __construct($post_table_sql_id = 'p', $post_meta_table_sql_id = 'pm'){
+    public string $post_table_sql_alias;
+    public string $post_meta_table_sql_alias;
+    public function __construct($post_table_sql_alias = 'p', $post_meta_table_sql_alias = 'pm'){
         //filters will be an array of arrays of Filter objects
         //each subarray will be an array of Filter objects that are joined by OR
         //the subarrays will be joined by AND
         $this->filters = [];
-        $this->post_table_sql_id = $post_table_sql_id;
-        $this->post_meta_table_sql_id = $post_meta_table_sql_id;
+        $this->sorts = [];
+        $this->post_table_sql_alias = $post_table_sql_alias;
+        $this->post_meta_table_sql_alias = $post_meta_table_sql_alias;
     }
 
     /**
@@ -108,7 +109,7 @@ class QueryBuilder{
         $sql = [];
         foreach ($this->filters as $group_key => $group_filters){
             $sql[] = "(" . implode(" OR ", array_map(function($filter){
-                return $filter->to_sql($this->post_table_sql_id, $this->post_meta_table_sql_id);
+                return $filter->to_sql($this->post_table_sql_alias, $this->post_meta_table_sql_alias);
             }, $group_filters)) . ")";
         }
         return implode(" AND ", $sql);
@@ -122,7 +123,7 @@ class QueryBuilder{
     public function get_sorts_sql(){
         $sql = [];
         foreach ($this->sorts as $i => $sort){
-            $sql[] = $sort->to_sql($this->post_table_sql_id, $this->post_meta_table_sql_id);
+            $sql[] = $sort->to_sql($this->post_table_sql_alias, $this->post_meta_table_sql_alias);
         }
         return implode(", ", $sql);
     }

@@ -30,10 +30,10 @@ class Sort{
      * Convert the sort to a SQL query string.  Paste this clause immediately after the ORDER BY clause.
      * 
      * In order to sort by meta, you need to convert meta attributes to a column of the output.  That means you cannot use the 
-     * $post_meta_table_sql_id.meta_value column.  Instead, make sure you rename the column in tehe external query to meta_key.
+     * $post_meta_table_sql_alias.meta_value column.  Instead, make sure you rename the column in tehe external query to meta_key.
      * 
-     * @param string $post_table_sql_id The SQL ID for the post table
-     * @param string $post_meta_table_sql_id The SQL ID for the post meta table
+     * @param string $post_table_sql_alias The SQL ID for the post table
+     * @param string $post_meta_table_sql_alias The SQL ID for the post meta table
      * @return string The SQL query string
      */
     public function to_sql($post_table_alias = 'p', $post_meta_table_alias = 'pm'){
