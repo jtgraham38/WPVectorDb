@@ -452,7 +452,11 @@ class VectorTable{
     public function get_vector_count(): int{
         global $wpdb;
 
-        return $wpdb->get_var("SELECT COUNT(*) FROM $this->table_name");
+        $count = $wpdb->get_var("SELECT COUNT(*) FROM $this->table_name");
+        if ($count == null){
+            return 0;
+        }
+        return $count;
     }
 
     //  \\  //  \\  //  \\ MANAGE SQL TABLES/FUNCS //  \\  //  \\  //  \\
