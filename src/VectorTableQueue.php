@@ -413,7 +413,7 @@ class VectorTableQueue {
         foreach ($status_order as $i => $status){
             $status = esc_sql($status);
             $i = esc_sql($i);
-            $status_when_clauses .= "WHEN status = '$status' THEN $i";
+            $status_when_clauses .= "WHEN status = '$status' THEN $i ";
         }
         $status_when_clauses .= " ELSE " . count($status_order) . " END";
 
