@@ -400,28 +400,32 @@ class VectorTableQueue {
      * @param int $per_page The number of records per page
      * @return array Array of records
      */
-    public function get_page_of_records($page = 1, $per_page = 25) {
+    public function get_page_of_records($page = 1, $per_page = 25, $status_order =['pending', 'processing', 'failed', 'completed']) {
         global $wpdb;
         $posts_table = esc_sql($wpdb->posts);
 
         //calculate the offset
         $offset = ($page - 1) * $per_page;
 
+
+        //create the status order by clause
+        $status_when_clauses = "CASE ";
+        foreach ($status_order as $i => $status){
+            $status = esc_sql($status);
+            $i = esc_sql($i);
+            $status_when_clauses .= "WHEN status = '$status' THEN $i";
+        }
+        $status_when_clauses .= " ELSE " . count($status_order) . " END";
+
         //prepare the sql query to get the records from the queue, along with the post title and post type
         //order them by processing, pending, failed, completed
-        $statuses = ['pending', 'processing', 'failed', 'completed'];
+        $statuses = $status_order;
         $sql = $wpdb->prepare(
             "SELECT * FROM {$this->table_name} 
             LEFT JOIN {$posts_table} ON {$this->table_name}.post_id = {$posts_table}.ID 
-            WHERE status IN ('%s', '%s', '%s', '%s')
+            WHERE status IN (" . implode(",", array_fill(0, count($statuses), '%s')) . ")
             ORDER BY status DESC,
-                CASE 
-                    WHEN status = 'pending' THEN 0 
-                    WHEN status = 'completed' THEN 1
-                    WHEN status = 'failed' THEN 2
-                    WHEN status = 'processing' THEN 3 
-                    ELSE 4
-                END,
+                $status_when_clauses,
             queued_time ASC
             LIMIT %d OFFSET %d",
             array_merge(
