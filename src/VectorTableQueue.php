@@ -75,15 +75,15 @@ class VectorTableQueue {
         $charset_collate = $wpdb->get_charset_collate();
 
         $sql = "CREATE TABLE $this->table_name (
-            job_id SERIAL PRIMARY KEY,
-            post_id INTEGER NOT NULL,
-            chunk_count INTEGER DEFAULT 0,
-            status VARCHAR(20) NOT NULL CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
-            queued_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            start_time TIMESTAMP,
-            end_time TIMESTAMP,
-            error_count INTEGER DEFAULT 0,
-            error_message TEXT DEFAULT NULL
+            `job_id` SERIAL PRIMARY KEY,
+            `post_id` INTEGER NOT NULL,
+            `chunk_count` INTEGER DEFAULT 0,
+            `status` VARCHAR(20) NOT NULL CHECK (`status` IN ('pending', 'processing', 'completed', 'failed')),
+            `queued_time` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            `start_time` TIMESTAMP,
+            `end_time` TIMESTAMP,
+            `error_count` INTEGER DEFAULT 0,
+            `error_message` TEXT DEFAULT NULL
         );";
 
         //execute the query
@@ -106,7 +106,7 @@ class VectorTableQueue {
             throw new \Exception('Post already exists in queue');
 
             //check if the status is either failed or completed
-            $status = $wpdb->get_var("SELECT status FROM $this->table_name WHERE post_id = $post_id");
+            $status = $wpdb->get_var("SELECT `status` FROM $this->table_name WHERE `post_id` = $post_id");
             if ($status == 'failed' || $status == 'completed'){
                 //reset the post
                 $this->delete_post($post_id);
@@ -149,7 +149,7 @@ class VectorTableQueue {
         }
 
         //create the first sql clause
-        $sql = "INSERT INTO {$this->table_name} (post_id, chunk_count, status, queued_time, error_count) VALUES ";
+        $sql = "INSERT INTO {$this->table_name} (`post_id`, `chunk_count`, `status`, `queued_time`, `error_count`) VALUES ";
 
         //create the values clause for each post id
         $values = array();
@@ -188,17 +188,17 @@ class VectorTableQueue {
         //NOTE: including failed results here is temporary, get first pending posts, then get failed posts that have not exceeded error count
         $posts = $wpdb->get_results(
             $wpdb->prepare(
-                "SELECT post_id, chunk_count 
+                "SELECT `post_id`, `chunk_count` 
                 FROM {$this->table_name} 
-                WHERE status = 'pending'
-                OR (status = 'failed' AND error_count < 3)
+                WHERE `status` = 'pending'
+                OR (`status` = 'failed' AND `error_count` < 3)
                 ORDER BY 
                     CASE 
-                        WHEN status = 'pending' THEN 0 
-                        WHEN status = 'failed' AND error_count < 3 THEN 1 
+                        WHEN `status` = 'pending' THEN 0 
+                        WHEN `status` = 'failed' AND `error_count` < 3 THEN 1 
                         ELSE 2 
                     END,
-                    queued_time ASC 
+                    `queued_time` ASC 
                 LIMIT %d",
                 $batch_size
             ),
@@ -215,9 +215,9 @@ class VectorTableQueue {
         $wpdb->query(
             $wpdb->prepare(
                 "UPDATE {$this->table_name} 
-                SET status = 'processing', 
-                start_time = %s 
-                WHERE post_id IN (" . implode(',', array_fill(0, count($post_ids), '%d')) . ")",
+                SET `status` = 'processing', 
+                `start_time` = %s 
+                WHERE `post_id` IN (" . implode(',', array_fill(0, count($post_ids), '%d')) . ")",
                 array_merge(array(current_time('mysql')), $post_ids)
             )
         );
@@ -251,7 +251,7 @@ class VectorTableQueue {
             if ($status === 'failed') {
                 $updates['error_count'] = $wpdb->get_var(
                     $wpdb->prepare(
-                        "SELECT error_count + 1 FROM {$this->table_name} WHERE post_id = %d",
+                        "SELECT `error_count` + 1 FROM {$this->table_name} WHERE `post_id` = %d",
                         $post_id
                     )
                 );
@@ -277,7 +277,7 @@ class VectorTableQueue {
         global $wpdb;
         return (bool) $wpdb->get_var(
             $wpdb->prepare(
-                "SELECT COUNT(*) FROM {$this->table_name} WHERE post_id = %d",
+                "SELECT COUNT(*) FROM {$this->table_name} WHERE `post_id` = %d",
                 $post_id
             )
         );
@@ -295,10 +295,10 @@ class VectorTableQueue {
 
         return array(
             'total' => $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_name}"),
-            'pending' => $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_name} WHERE status = 'pending'"),
-            'processing' => $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_name} WHERE status = 'processing'"),
-            'completed' => $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_name} WHERE status = 'completed'"),
-            'failed' => $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_name} WHERE status = 'failed'")
+            'pending' => $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_name} WHERE `status` = 'pending'"),
+            'processing' => $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_name} WHERE `status` = 'processing'"),
+            'completed' => $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_name} WHERE `status` = 'completed'"),
+            'failed' => $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_name} WHERE `status` = 'failed'")
         );
     }
 
@@ -313,21 +313,21 @@ class VectorTableQueue {
         //if a record has been started more than 15 minutes ago and its status is processing, set it as a failure
         $wpdb->query(
             "UPDATE {$this->table_name} 
-            SET status = 'failed', 
-            error_count = error_count + 1,
-            end_time = NOW(),
-            error_message = 'Processing time exceeded 15 minutes.'
-            WHERE status = 'processing' 
-            AND start_time < NOW() - INTERVAL 15 MINUTE
-            AND end_time IS NULL
+            SET `status` = 'failed', 
+            `error_count` = `error_count` + 1,
+            `end_time` = NOW(),
+            `error_message` = 'Processing time exceeded 15 minutes.'
+            WHERE `status` = 'processing' 
+            AND `start_time` < NOW() - INTERVAL 15 MINUTE
+            AND `end_time` IS NULL
             "
         );
 
         //delete the records that are older than 7 days and complete or failed more than 3 times
         return $wpdb->query(
             "DELETE FROM {$this->table_name} 
-            WHERE (status = 'completed' AND end_time IS NOT NULL AND end_time < NOW() - INTERVAL 3 DAY) 
-            OR (status = 'failed' AND error_count > 3)"
+            WHERE (`status` = 'completed' AND `end_time` IS NOT NULL AND `end_time` < NOW() - INTERVAL 3 DAY) 
+            OR (`status` = 'failed' AND `error_count` > 3)"
         );
     }
 
@@ -340,10 +340,10 @@ class VectorTableQueue {
         global $wpdb;
 
         return $wpdb->get_col(
-            "SELECT post_id 
+            "SELECT `post_id` 
             FROM {$this->table_name} 
-            WHERE status = 'failed' 
-            AND error_count < 3
+            WHERE `status` = 'failed' 
+            AND `error_count` < 3
             LIMIT 25000
             "
         );
@@ -413,7 +413,7 @@ class VectorTableQueue {
         foreach ($status_order as $i => $status){
             $status = esc_sql($status);
             $i = esc_sql($i);
-            $status_when_clauses .= "WHEN status = '$status' THEN $i ";
+            $status_when_clauses .= "WHEN `status` = '$status' THEN $i ";
         }
         $status_when_clauses .= " ELSE " . count($status_order) . " END";
 
@@ -422,11 +422,11 @@ class VectorTableQueue {
         $statuses = $status_order;
         $sql = $wpdb->prepare(
             "SELECT * FROM {$this->table_name} 
-            LEFT JOIN {$posts_table} ON {$this->table_name}.post_id = {$posts_table}.ID 
-            WHERE status IN (" . implode(",", array_fill(0, count($statuses), '%s')) . ")
-            ORDER BY status DESC,
+            LEFT JOIN {$posts_table} ON {$this->table_name}.`post_id` = {$posts_table}.`ID` 
+            WHERE `status` IN (" . implode(",", array_fill(0, count($statuses), '%s')) . ")
+            ORDER BY `status` DESC,
                 $status_when_clauses,
-            queued_time ASC
+            `queued_time` ASC
             LIMIT %d OFFSET %d",
             array_merge(
                 $statuses,

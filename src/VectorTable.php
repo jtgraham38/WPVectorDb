@@ -114,7 +114,7 @@ class VectorTable{
         }
 
         //get all the vectors for the candidate posts
-        $candidates_query = "select id, binary_code from $this->table_name WHERE post_id IN ($candidate_posts_query) LIMIT $stage_1_limit";
+        $candidates_query = "select `id`, `binary_code` from $this->table_name WHERE `post_id` IN ($candidate_posts_query) LIMIT $stage_1_limit";
 
         $embeddings = $wpdb->get_results($candidates_query);
 
@@ -154,7 +154,7 @@ class VectorTable{
         $reranked_candidates = new CosimMaxHeap();
         
         //get all the candidates, with a limit of $stage_1_limit
-        $sql = "SELECT id, magnitude, vector FROM $this->table_name WHERE id IN ($candidates_str,-1) LIMIT $stage_1_limit";
+        $sql = "SELECT `id`, `magnitude`, `vector` FROM $this->table_name WHERE `id` IN ($candidates_str,-1) LIMIT $stage_1_limit";
         $candidates = $wpdb->get_results($sql);
 
         //parse the vector
@@ -242,7 +242,7 @@ class VectorTable{
         global $wpdb;
 
         return $wpdb->get_row($wpdb->prepare(
-            "SELECT * FROM $this->table_name WHERE id = %d",
+            "SELECT * FROM $this->table_name WHERE `id` = %d",
             $id
         ));
     }
@@ -263,7 +263,7 @@ class VectorTable{
 
         return $wpdb->get_results(
             $wpdb->prepare(
-                "SELECT * FROM $this->table_name WHERE id IN ($ids_str,-1) ORDER BY FIELD(id, %s)",
+                "SELECT * FROM $this->table_name WHERE `id` IN ($ids_str,-1) ORDER BY FIELD(`id`, %s)",
                 $ids_str
             )
         );
@@ -282,7 +282,7 @@ class VectorTable{
         global $wpdb;
 
         return $wpdb->get_row($wpdb->prepare(
-            "SELECT * FROM $this->table_name WHERE post_id = %d AND sequence_no = %d",
+            "SELECT * FROM $this->table_name WHERE `post_id` = %d AND `sequence_no` = %d",
             $post_id,
             $sequence_no
         ));
@@ -298,7 +298,7 @@ class VectorTable{
         global $wpdb;
 
         return $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM $this->table_name WHERE post_id = %d",
+            "SELECT * FROM $this->table_name WHERE `post_id` = %d",
             $post_id
         ));
     }
@@ -314,7 +314,7 @@ class VectorTable{
         global $wpdb;
 
         return $wpdb->get_row($wpdb->prepare(
-            "SELECT * FROM $this->table_name WHERE post_id = %d ORDER BY updated_at DESC LIMIT 1",
+            "SELECT * FROM $this->table_name WHERE `post_id` = %d ORDER BY `updated_at` DESC LIMIT 1",
             $post_id
         ));
     }
@@ -324,13 +324,13 @@ class VectorTable{
      * 
      * @return array Array of all vector data objects (limited to 100,000)
      */
-    public function get_all(): array{
+    public function get_all(int $start = 0, int $limit = 100000): array{
         //todo: paginate
         global $wpdb;
 
-        //TODO: I need to paginate this eventually
+        //return a page of vectors
         return $wpdb->get_results(
-            "SELECT * FROM $this->table_name LIMIT 100000"
+            "SELECT * FROM $this->table_name LIMIT $limit OFFSET $start"
         );
     }
 
@@ -358,7 +358,7 @@ class VectorTable{
         //if the vector exists, update it with a sql statement (to use the UNHEX function)
         if ($vector_exists > 0){
             $wpdb->query($wpdb->prepare(
-                "UPDATE $this->table_name SET vector = %s, normalized_vector = %s, vector_type = %s, binary_code = %s WHERE post_id = %d AND sequence_no = %d",
+                "UPDATE $this->table_name SET `vector` = %s, `normalized_vector` = %s, `vector_type` = %s, `binary_code` = %s WHERE `post_id` = %d AND `sequence_no` = %d",
                 $vector,
                 $normalized_vector,
                 $vector_type,
@@ -373,7 +373,7 @@ class VectorTable{
         else{
             //insert with a sql statement (to use the UNHEX function)
              $wpdb->query($wpdb->prepare(
-                "INSERT INTO $this->table_name (post_id, sequence_no, vector, normalized_vector, vector_type, binary_code, magnitude) VALUES (%d, %d, %s, %s, %s, %s , %f)",
+                "INSERT INTO $this->table_name (`post_id`, `sequence_no`, `vector`, `normalized_vector`, `vector_type`, `binary_code`, `magnitude`) VALUES (%d, %d, %s, %s, %s, %s , %f)",
                 $post_id,
                 $sequence_no,
                 $vector,
@@ -471,17 +471,17 @@ class VectorTable{
 
         //NOTE: sequence_no is the index of the vector in the document
         $sql = sprintf("CREATE TABLE $this->table_name (
-            id mediumint(9) NOT NULL AUTO_INCREMENT,
-            post_id mediumint(9) NOT NULL,
-            sequence_no mediumint(9) NOT NULL,
-            vector JSON NOT NULL,
-            normalized_vector JSON NOT NULL,
-            vector_type varchar(255) NOT NULL,
-            binary_code BLOB NOT NULL,
-            magnitude float NOT NULL,
-            created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
-            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL,
-            PRIMARY KEY  (id)
+            `id` mediumint(9) NOT NULL AUTO_INCREMENT,
+            `post_id` mediumint(9) NOT NULL,
+            `sequence_no` mediumint(9) NOT NULL,
+            `vector` JSON NOT NULL,
+            `normalized_vector` JSON NOT NULL,
+            `vector_type` varchar(255) NOT NULL,
+            `binary_code` BLOB NOT NULL,
+            `magnitude` float NOT NULL,
+            `created_at` datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
+            `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL,
+            PRIMARY KEY  (`id`)
         ) $charset_collate;"/*, $this->vector_length/8 * 2*/);
         //^ binary code is the binary representation of the vector, length is vector_length/8 for 8 bits per byte
         //it is divided by 8 because 1 byte = 8 bits,
